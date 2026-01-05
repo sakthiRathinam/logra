@@ -97,9 +97,16 @@ func main() {
 		return
 	}
 	db_file_path := os.Args[1]
+
 	version := "1.0.0"
 	config_file_path := os.Args[2]
 	command := os.Args[3]
+
+	fmt.Println("version command:", version)
+	fmt.Println("config_file_path command:", config_file_path)
+	fmt.Println("db_file_path command:", db_file_path)
+	fmt.Println("command:", command)
+
 	lograDB, err := NewLograDB(db_file_path, version, config_file_path)
 	if err != nil {
 		fmt.Println("Failed to initialize LograDB:", err)
@@ -109,9 +116,9 @@ func main() {
 	case "version":
 		fmt.Println("LograDB Version:", lograDB.GetVersion())
 		return
-	case "haskey":
+	case "get":
 		if len(os.Args) < 5 {
-			fmt.Println("Usage: go run main.go <db_file_path> <config_file_path> haskey <key>")
+			fmt.Println("Usage: go run main.go <db_file_path> <config_file_path> get <key>")
 			return
 		}
 		key := os.Args[4]
@@ -121,9 +128,9 @@ func main() {
 			fmt.Printf("Key '%s' does not exist in the database.\n", key)
 		}
 		return
-	case "writekey":
+	case "set":
 		if len(os.Args) < 6 {
-			fmt.Println("Usage: go run main.go <db_file_path> <config_file_path> writekey <key> <value>")
+			fmt.Println("Usage: go run main.go <db_file_path> <config_file_path> set <key> <value>")
 			return
 		}
 		key := os.Args[4]
@@ -134,13 +141,11 @@ func main() {
 		}
 		return
 	default:
-		fmt.Println("Unknown command. Available commands: version, haskey, writekey")
+		fmt.Println("Unknown command. Available commands: version, get, set")
 		return
 
 	}
 
-	fmt.Println("LograDB initialized with the following parameters:")
-	fmt.Printf("DB File Path: %s\n", lograDB.db_file_path)
 	fmt.Printf("Version: %s\n", lograDB.version)
 	fmt.Printf("Config File Path: %s\n", lograDB.config_file_path)
 
