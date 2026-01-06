@@ -3,23 +3,24 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
 
 type LograDB struct {
-	keyDict          map[string]bool
-	db_file_path     string
-	version          string
-	config_file_path string
+	keyDict    map[string]int64
+	dbFilePath string
+	version    string
+	activeFile *os.File
 }
 
 func (db *LograDB) GetVersion() string {
 	return db.version
 }
 
-func (db *LograDB) populateAllKeys(file *os.File) (bool, error) {
-	bufferedReader := bufio.NewReader(file)
+func (db *LograDB) populateAllKeys() (bool, error) {
+	bufferedReader := bufio.NewReader(db.activeFile)
 	for {
 		line, _, err := bufferedReader.ReadLine()
 		if err != nil {
@@ -31,7 +32,7 @@ func (db *LograDB) populateAllKeys(file *os.File) (bool, error) {
 
 		splittedLine := strings.Split(string(line), ":")
 		key := splittedLine[0]
-		db.keyDict[key] = true
+		db.keyDict[key] = 1
 	}
 	return true, nil
 }
@@ -41,30 +42,66 @@ func (db *LograDB) HasKey(key string) bool {
 	return exists
 }
 
+func (db *LograDB) GetValue(key string) (string, error) {
+	offset, exists := db.keyDict[key]
+	if !exists {
+		return "", fmt.Errorf("key not found")
+	}
+
+	_, err := db.activeFile.Seek(offset, io.SeekStart)
+	if err != nil {
+		return "", err
+	}
+
+	bufferedReader := bufio.NewReader(db.activeFile)
+	line, _, err := bufferedReader.ReadLine()
+	if err != nil {
+		return "", err
+	}
+
+	splittedLine := strings.Split(string(line), ":")
+	if len(splittedLine) < 2 {
+		return "", fmt.Errorf("invalid data format")
+	}
+	return splittedLine[1], nil
+}
 func (db *LograDB) writeKeyPair(key string, val string) error {
 
-	db_file, err := os.OpenFile(db.db_file_path, os.O_APPEND|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-	defer db_file.Close()
+	writer := bufio.NewWriter(db.activeFile)
 
-	_, err = db_file.WriteString(fmt.Sprintf("%s:%s\n", key, val))
+	offset, err := db.activeFile.Seek(0, io.SeekEnd)
+
 	if err != nil {
 		return err
 	}
-	db.keyDict[key] = true
+
+	_, err = writer.WriteString(fmt.Sprintf("%s:%s\n", key, val))
+	if err != nil {
+		return err
+	}
+
+	err = writer.Flush()
+	if err != nil {
+		return err
+	}
+	db.keyDict[key] = offset
 	return nil
 
 }
 
-func NewLograDB(db_file_path string, version string, config_file_path string) (*LograDB, error) {
+func NewLograDB(db_file_path string, version string) (*LograDB, error) {
 	var logra_db *LograDB
+
+	dbFile, err := os.Open(db_file_path)
+	if err != nil {
+		fmt.Println("Error creating/opening database file:", err)
+		return nil, err
+	}
 	logra_db = &LograDB{
-		keyDict:          make(map[string]bool),
-		db_file_path:     db_file_path,
-		version:          version,
-		config_file_path: config_file_path,
+		keyDict:    make(map[string]int64),
+		dbFilePath: db_file_path,
+		version:    version,
+		activeFile: dbFile,
 	}
 
 	db_file, err := os.Open(db_file_path)
@@ -75,7 +112,7 @@ func NewLograDB(db_file_path string, version string, config_file_path string) (*
 	}
 	defer db_file.Close()
 
-	populated, err := logra_db.populateAllKeys(db_file)
+	populated, err := logra_db.populateAllKeys()
 	if populated {
 		fmt.Println("All keys populated successfully.")
 	} else {
@@ -99,15 +136,13 @@ func main() {
 	db_file_path := os.Args[1]
 
 	version := "1.0.0"
-	config_file_path := os.Args[2]
-	command := os.Args[3]
+	command := os.Args[2]
 
 	fmt.Println("version command:", version)
-	fmt.Println("config_file_path command:", config_file_path)
 	fmt.Println("db_file_path command:", db_file_path)
 	fmt.Println("command:", command)
 
-	lograDB, err := NewLograDB(db_file_path, version, config_file_path)
+	lograDB, err := NewLograDB(db_file_path, version)
 	if err != nil {
 		fmt.Println("Failed to initialize LograDB:", err)
 		return
@@ -117,11 +152,11 @@ func main() {
 		fmt.Println("LograDB Version:", lograDB.GetVersion())
 		return
 	case "get":
-		if len(os.Args) < 5 {
-			fmt.Println("Usage: go run main.go <db_file_path> <config_file_path> get <key>")
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: go run main.go <db_file_path> get <key>")
 			return
 		}
-		key := os.Args[4]
+		key := os.Args[3]
 		if lograDB.HasKey(key) {
 			fmt.Printf("Key '%s' exists in the database.\n", key)
 		} else {
@@ -129,12 +164,12 @@ func main() {
 		}
 		return
 	case "set":
-		if len(os.Args) < 6 {
-			fmt.Println("Usage: go run main.go <db_file_path> <config_file_path> set <key> <value>")
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: go run main.go <db_file_path> set <key> <value>")
 			return
 		}
-		key := os.Args[4]
-		value := os.Args[5]
+		key := os.Args[3]
+		value := os.Args[4]
 		err := lograDB.writeKeyPair(key, value)
 		if err != nil {
 			fmt.Println("Failed to write key-value pair:", err)
@@ -145,8 +180,5 @@ func main() {
 		return
 
 	}
-
-	fmt.Printf("Version: %s\n", lograDB.version)
-	fmt.Printf("Config File Path: %s\n", lograDB.config_file_path)
 
 }
