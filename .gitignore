@@ -1,0 +1,4 @@
+logra.db
+*.db
+*.log
+*.idx
