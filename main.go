@@ -10,10 +10,22 @@ import (
 )
 
 type LograDB struct {
-	keyDict    map[string]int64
+	keyDict    map[string]DBRow
 	dbFilePath string
 	version    string
 	activeFile *os.File
+}
+type RecordHeader struct {
+	crc       uint32
+	timestamp int64
+	keySize   uint32
+	valueSize uint32
+}
+type DBRow struct {
+	offset int64
+	header RecordHeader
+	key    string
+	value  string
 }
 
 func (db *LograDB) GetVersion() string {
@@ -71,6 +83,22 @@ func (db *LograDB) GetValue(key string) (string, error) {
 	}
 	return splittedLine[2], nil
 }
+
+func createDBRow(key string, value string) DBRow {
+	crc := uint32(0)      // Placeholder for CRC calculation
+	timestamp := int64(0) // Placeholder for timestamp
+	return DBRow{
+		header: RecordHeader{
+			crc:       crc,
+			timestamp: timestamp,
+			keySize:   uint32(len(key)),
+			valueSize: uint32(len(value)),
+		},
+		key:   key,
+		value: value,
+	}
+}
+
 func (db *LograDB) writeKeyPair(key string, val string) error {
 
 	writer := bufio.NewWriter(db.activeFile)
@@ -107,7 +135,7 @@ func NewLograDB(db_file_path string, version string) (*LograDB, error) {
 		return nil, err
 	}
 	logra_db = &LograDB{
-		keyDict:    make(map[string]int64),
+		keyDict:    make(map[string]ObjLayout),
 		dbFilePath: db_file_path,
 		version:    version,
 		activeFile: dbFile,
