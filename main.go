@@ -8,7 +8,6 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -99,6 +98,13 @@ func transformBytesToDBRow(data []byte) (DBRow, error) {
 
 	return row, nil
 }
+
+func handleEOFGracefully(err error, returnObj interface{}) (interface{}, error) {
+	if err == io.EOF {
+		return returnObj, nil
+	}
+	return returnObj, err
+}
 func (db *LograDB) populateAllKeys() (bool, error) {
 	bufferedReader := bufio.NewReader(db.activeFile)
 	offset := int64(0)
@@ -106,19 +112,21 @@ func (db *LograDB) populateAllKeys() (bool, error) {
 		headerBytes := make([]byte, 16)
 		_, err := io.ReadFull(bufferedReader, headerBytes)
 		if err == io.EOF {
-			break
+			return true, nil
 		}
+		fmt.Println("Read header bytes:", headerBytes)
 		keySize := binary.LittleEndian.Uint32(headerBytes[4:8])
 		valueSize := binary.LittleEndian.Uint32(headerBytes[8:12])
 
 		totalRecordSize := int64(16 + keySize + valueSize)
+		fmt.Println("keySize:", keySize, "valueSize:", valueSize, "totalRecordSize:", totalRecordSize)
 		key := make([]byte, keySize)
 		_, err = io.ReadFull(bufferedReader, key)
 		if err != nil {
 			return false, err
 		}
 		// Skip the value bytes
-
+		fmt.Println("Read key bytes:", key)
 		_, err = bufferedReader.Discard(int(valueSize))
 		if err != nil {
 			return false, err
@@ -127,10 +135,10 @@ func (db *LograDB) populateAllKeys() (bool, error) {
 		if err != nil {
 			return false, err
 		}
+		fmt.Println("Populating key:", string(key), "at offset:", offset)
 		db.keyDict[string(key)] = inMemObj
 		offset += totalRecordSize
 	}
-	return true, nil
 }
 
 func (db *LograDB) HasKey(key string) bool {
@@ -138,28 +146,32 @@ func (db *LograDB) HasKey(key string) bool {
 	return exists
 }
 
-func (db *LograDB) GetValue(key string) (string, error) {
+func (db *LograDB) GetValue(key string) (DBRow, error) {
+	var dbRow DBRow
 	memVal, exists := db.keyDict[key]
 	if !exists {
-		return "", fmt.Errorf("key not found")
+		return dbRow, fmt.Errorf("key not found")
 	}
 
 	_, err := db.activeFile.Seek(memVal.offset, io.SeekStart)
 	if err != nil {
-		return "", err
+		return dbRow, err
 	}
 
 	bufferedReader := bufio.NewReader(db.activeFile)
-	line, _, err := bufferedReader.ReadLine()
+	// Read the entire record
+	recordSize := 16 + memVal.recordHeader.keySize + memVal.recordHeader.valueSize
+	recordBytes := make([]byte, recordSize)
+	_, err = io.ReadFull(bufferedReader, recordBytes)
 	if err != nil {
-		return "", err
+		return dbRow, err
+	}
+	dbRow, err = transformBytesToDBRow(recordBytes)
+	if err != nil {
+		return dbRow, err
 	}
 
-	splittedLine := strings.Split(string(line), ":")
-	if len(splittedLine) < 2 {
-		return "", fmt.Errorf("invalid data format")
-	}
-	return splittedLine[2], nil
+	return dbRow, nil
 }
 
 func (db *LograDB) writeKeyPair(key string, val string) error {
