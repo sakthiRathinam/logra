@@ -2,18 +2,26 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
-	"strconv"
 	"strings"
+	"time"
 )
 
 type LograDB struct {
-	keyDict    map[string]DBRow
+	keyDict    map[string]InMemoryObj
 	dbFilePath string
 	version    string
 	activeFile *os.File
+}
+
+type InMemoryObj struct {
+	offset       int64
+	recordHeader RecordHeader
 }
 type RecordHeader struct {
 	crc       uint32
@@ -22,7 +30,6 @@ type RecordHeader struct {
 	valueSize uint32
 }
 type DBRow struct {
-	offset int64
 	header RecordHeader
 	key    string
 	value  string
@@ -32,25 +39,96 @@ func (db *LograDB) GetVersion() string {
 	return db.version
 }
 
+func tranformBytesToInMemoryVal(offset int64, data []byte) (InMemoryObj, error) {
+	var imv InMemoryObj
+	buffer := bytes.NewReader(data)
+
+	err := binary.Read(buffer, binary.LittleEndian, &imv.recordHeader.crc)
+	if err != nil {
+		return imv, err
+	}
+	err = binary.Read(buffer, binary.LittleEndian, &imv.recordHeader.keySize)
+	if err != nil {
+		return imv, err
+	}
+	err = binary.Read(buffer, binary.LittleEndian, &imv.recordHeader.valueSize)
+	if err != nil {
+		return imv, err
+	}
+	err = binary.Read(buffer, binary.LittleEndian, &imv.recordHeader.timestamp)
+	if err != nil {
+		return imv, err
+	}
+	imv.offset = offset
+	return imv, nil
+}
+func transformBytesToDBRow(data []byte) (DBRow, error) {
+	var row DBRow
+	buffer := bytes.NewReader(data)
+
+	err := binary.Read(buffer, binary.LittleEndian, &row.header.crc)
+	if err != nil {
+		return row, err
+	}
+	err = binary.Read(buffer, binary.LittleEndian, &row.header.keySize)
+	if err != nil {
+		return row, err
+	}
+	err = binary.Read(buffer, binary.LittleEndian, &row.header.valueSize)
+	if err != nil {
+		return row, err
+	}
+	err = binary.Read(buffer, binary.LittleEndian, &row.header.timestamp)
+	if err != nil {
+		return row, err
+	}
+
+	keyBytes := make([]byte, row.header.keySize)
+	_, err = buffer.Read(keyBytes)
+	if err != nil {
+		return row, err
+	}
+	row.key = string(keyBytes)
+
+	valueBytes := make([]byte, row.header.valueSize)
+	_, err = buffer.Read(valueBytes)
+	if err != nil {
+		return row, err
+	}
+	row.value = string(valueBytes)
+
+	return row, nil
+}
 func (db *LograDB) populateAllKeys() (bool, error) {
 	bufferedReader := bufio.NewReader(db.activeFile)
+	offset := int64(0)
 	for {
-		line, _, err := bufferedReader.ReadLine()
+		headerBytes := make([]byte, 16)
+		_, err := io.ReadFull(bufferedReader, headerBytes)
+		if err == io.EOF {
+			break
+		}
+		keySize := binary.LittleEndian.Uint32(headerBytes[4:8])
+		valueSize := binary.LittleEndian.Uint32(headerBytes[8:12])
+
+		totalRecordSize := int64(16 + keySize + valueSize)
+		key := make([]byte, keySize)
+		_, err = io.ReadFull(bufferedReader, key)
 		if err != nil {
-			if err.Error() == "EOF" {
-				break
-			}
 			return false, err
 		}
+		// Skip the value bytes
 
-		splittedLine := strings.Split(string(line), ":")
-		key := splittedLine[0]
-		offset, err := strconv.Atoi(splittedLine[1])
+		_, err = bufferedReader.Discard(int(valueSize))
 		if err != nil {
 			return false, err
-
 		}
-		db.keyDict[key] = int64(offset)
+		inMemObj, err := tranformBytesToInMemoryVal(offset, headerBytes)
+		if err != nil {
+			return false, err
+		}
+		db.keyDict[string(key)] = inMemObj
+		offset += totalRecordSize
 	}
 	return true, nil
 }
@@ -61,12 +139,12 @@ func (db *LograDB) HasKey(key string) bool {
 }
 
 func (db *LograDB) GetValue(key string) (string, error) {
-	offset, exists := db.keyDict[key]
+	memVal, exists := db.keyDict[key]
 	if !exists {
 		return "", fmt.Errorf("key not found")
 	}
 
-	_, err := db.activeFile.Seek(offset, io.SeekStart)
+	_, err := db.activeFile.Seek(memVal.offset, io.SeekStart)
 	if err != nil {
 		return "", err
 	}
@@ -84,44 +162,44 @@ func (db *LograDB) GetValue(key string) (string, error) {
 	return splittedLine[2], nil
 }
 
-func createDBRow(key string, value string) DBRow {
-	crc := uint32(0)      // Placeholder for CRC calculation
-	timestamp := int64(0) // Placeholder for timestamp
-	return DBRow{
-		header: RecordHeader{
-			crc:       crc,
-			timestamp: timestamp,
-			keySize:   uint32(len(key)),
-			valueSize: uint32(len(value)),
-		},
-		key:   key,
-		value: value,
-	}
-}
-
 func (db *LograDB) writeKeyPair(key string, val string) error {
-
 	writer := bufio.NewWriter(db.activeFile)
-
 	offset, err := db.activeFile.Seek(0, io.SeekEnd)
 
-	if err != nil {
-		fmt.Println("Error seeking to end of file:", err)
-		return err
-	}
+	buffer := bytes.Buffer{}
+	timestamp := time.Now().Unix()
+	binary.Write(&buffer, binary.LittleEndian, uint32(len(key)))
+	binary.Write(&buffer, binary.LittleEndian, uint32(len(val)))
+	binary.Write(&buffer, binary.LittleEndian, int64(timestamp))
+	buffer.Write([]byte(key))
+	buffer.Write([]byte(val))
 
-	_, err = writer.WriteString(fmt.Sprintf("%s:%d:%s\n", key, offset, val))
+	payload := buffer.Bytes()
+
+	crc := crc32.ChecksumIEEE(payload)
+
+	finalBuffer := bytes.Buffer{}
+	binary.Write(&finalBuffer, binary.LittleEndian, crc)
+	finalBuffer.Write(payload)
+
+	_, err = writer.Write(finalBuffer.Bytes())
 	if err != nil {
-		fmt.Println("Error writing key-value pair:", err)
 		return err
 	}
 
 	err = writer.Flush()
 	if err != nil {
-		fmt.Println("Error flushing writer:", err)
 		return err
 	}
-	db.keyDict[key] = offset
+	db.keyDict[key] = InMemoryObj{
+		offset: offset,
+		recordHeader: RecordHeader{
+			crc:       crc,
+			timestamp: timestamp,
+			keySize:   uint32(len(key)),
+			valueSize: uint32(len(val)),
+		},
+	}
 	return nil
 
 }
@@ -135,7 +213,7 @@ func NewLograDB(db_file_path string, version string) (*LograDB, error) {
 		return nil, err
 	}
 	logra_db = &LograDB{
-		keyDict:    make(map[string]ObjLayout),
+		keyDict:    make(map[string]InMemoryObj),
 		dbFilePath: db_file_path,
 		version:    version,
 		activeFile: dbFile,
