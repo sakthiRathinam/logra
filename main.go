@@ -40,6 +40,7 @@ func (db *LograDB) GetVersion() string {
 
 func tranformBytesToInMemoryVal(offset int64, data []byte) (InMemoryObj, error) {
 	var imv InMemoryObj
+	fmt.Println("Transforming bytes to InMemoryObj:", data)
 	buffer := bytes.NewReader(data)
 
 	err := binary.Read(buffer, binary.LittleEndian, &imv.recordHeader.crc)
@@ -55,6 +56,9 @@ func tranformBytesToInMemoryVal(offset int64, data []byte) (InMemoryObj, error) 
 		return imv, err
 	}
 	err = binary.Read(buffer, binary.LittleEndian, &imv.recordHeader.timestamp)
+	if err == io.EOF {
+		return imv, nil
+	}
 	if err != nil {
 		return imv, err
 	}
@@ -99,17 +103,14 @@ func transformBytesToDBRow(data []byte) (DBRow, error) {
 	return row, nil
 }
 
-func handleEOFGracefully(err error, returnObj interface{}) (interface{}, error) {
-	if err == io.EOF {
-		return returnObj, nil
-	}
-	return returnObj, err
-}
 func (db *LograDB) populateAllKeys() (bool, error) {
 	bufferedReader := bufio.NewReader(db.activeFile)
 	offset := int64(0)
 	for {
-		headerBytes := make([]byte, 16)
+		db.activeFile.Seek(offset, io.SeekStart)
+		bufferedReader.Reset(db.activeFile)
+
+		headerBytes := make([]byte, 20)
 		_, err := io.ReadFull(bufferedReader, headerBytes)
 		if err == io.EOF {
 			return true, nil
@@ -117,27 +118,21 @@ func (db *LograDB) populateAllKeys() (bool, error) {
 		fmt.Println("Read header bytes:", headerBytes)
 		keySize := binary.LittleEndian.Uint32(headerBytes[4:8])
 		valueSize := binary.LittleEndian.Uint32(headerBytes[8:12])
-
-		totalRecordSize := int64(16 + keySize + valueSize)
-		fmt.Println("keySize:", keySize, "valueSize:", valueSize, "totalRecordSize:", totalRecordSize)
+		totalRecordSize := int64(20 + keySize + valueSize)
 		key := make([]byte, keySize)
 		_, err = io.ReadFull(bufferedReader, key)
-		if err != nil {
-			return false, err
+		if err == io.EOF {
+			return true, nil
 		}
 		// Skip the value bytes
-		fmt.Println("Read key bytes:", key)
-		_, err = bufferedReader.Discard(int(valueSize))
-		if err != nil {
-			return false, err
-		}
+
 		inMemObj, err := tranformBytesToInMemoryVal(offset, headerBytes)
 		if err != nil {
 			return false, err
 		}
-		fmt.Println("Populating key:", string(key), "at offset:", offset)
 		db.keyDict[string(key)] = inMemObj
 		offset += totalRecordSize
+
 	}
 }
 
@@ -160,7 +155,7 @@ func (db *LograDB) GetValue(key string) (DBRow, error) {
 
 	bufferedReader := bufio.NewReader(db.activeFile)
 	// Read the entire record
-	recordSize := 16 + memVal.recordHeader.keySize + memVal.recordHeader.valueSize
+	recordSize := 20 + memVal.recordHeader.keySize + memVal.recordHeader.valueSize
 	recordBytes := make([]byte, recordSize)
 	_, err = io.ReadFull(bufferedReader, recordBytes)
 	if err != nil {
@@ -273,11 +268,13 @@ func main() {
 		key := os.Args[3]
 		if lograDB.HasKey(key) {
 			value, err := lograDB.GetValue(key)
+			fmt.Println("Retrieved value for key:", value.value)
+			fmt.Println("Full DBRow:", value.header, value.key, value.value, value.header.timestamp, value.header.valueSize, value.header.keySize)
 			if err != nil {
 				fmt.Println("Error retrieving value:", err)
 				return
 			}
-			fmt.Printf("Key '%s' exists in the database with value '%s'.\n", key, value)
+			fmt.Printf("Key '%s' exists in the database with value '%s'.\n", value.key, value.value)
 		} else {
 			fmt.Printf("Key '%s' does not exist in the database.\n", key)
 		}
