@@ -9,11 +9,11 @@ CONFIG_FILE=config.txt
 
 # Build the binary
 build:
-	go build -o $(BINARY) main.go
+	go build -o $(BINARY) ./cmd/logra
 
 # Run without building binary
 run:
-	go run main.go $(DB_FILE) $(CONFIG_FILE) $(CMD) $(ARGS)
+	go run ./cmd/logra $(DB_FILE) $(CMD) $(ARGS)
 
 # Clean build artifacts
 clean:
