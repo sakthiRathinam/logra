@@ -3,6 +3,7 @@ package storage
 import (
 	"bufio"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 )
@@ -102,7 +103,7 @@ func (s *Storage) Scan(fn func(offset int64, key []byte, header Header) error) e
 		}
 
 		if err := fn(offset, key, header); err != nil {
-			return err
+			fmt.Printf("Error in scan function%s: for this key %s\n", err, string(key))
 		}
 
 		offset += int64(HeaderSize + keySize + valueSize)

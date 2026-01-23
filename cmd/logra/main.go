@@ -7,14 +7,15 @@ import (
 	"sakthirathinam/logra"
 )
 
+const dbPath = "logra.db"
+
 func main() {
-	if len(os.Args) < 3 {
+	if len(os.Args) < 2 {
 		fmt.Println("Usage: logra <db_file_path> <command> [args...]")
 		os.Exit(1)
 	}
 
-	dbPath := os.Args[1]
-	command := os.Args[2]
+	command := os.Args[1]
 
 	db, err := logra.Open(dbPath, "1.0.0")
 	if err != nil {
@@ -28,11 +29,11 @@ func main() {
 		fmt.Println("LograDB Version:", db.Version())
 
 	case "get":
-		if len(os.Args) < 4 {
-			fmt.Println("Usage: logra <db_file_path> get <key>")
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: logra get <key>")
 			os.Exit(1)
 		}
-		key := os.Args[3]
+		key := os.Args[2]
 
 		if !db.Has(key) {
 			fmt.Printf("Key '%s' does not exist.\n", key)
@@ -47,12 +48,12 @@ func main() {
 		fmt.Printf("Key: %s\nValue: %s\n", record.Key, record.Value)
 
 	case "set":
-		if len(os.Args) < 5 {
-			fmt.Println("Usage: logra <db_file_path> set <key> <value>")
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: logra set <key> <value>")
 			os.Exit(1)
 		}
-		key := os.Args[3]
-		value := os.Args[4]
+		key := os.Args[2]
+		value := os.Args[3]
 
 		if err := db.Set(key, value); err != nil {
 			fmt.Println("Failed to set key-value:", err)
