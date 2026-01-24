@@ -146,15 +146,53 @@ func (s *Storage) ReadAt(offset int64, header Header) (Record, error) {
 	return DecodeRecord(data)
 }
 
-func (s *Storage) Scan(fn func(offset int64, key []byte, header Header) error) error {
-	reader := bufio.NewReader(s.activeFile)
-	offset := int64(0)
+func (s *Storage) getAllDatFiles() ([]*os.File, error) {
+	files, err := os.ReadDir(s.dirPath)
+	if err != nil {
+		return nil, err
+	}
 
+	datFiles := []*os.File{}
+	for _, file := range files {
+		if !file.IsDir() && len(file.Name()) > 4 && file.Name()[len(file.Name())-4:] == ".dat" {
+			f, err := os.OpenFile(s.dirPath+"/"+file.Name(), os.O_RDWR, 0666)
+			if err != nil {
+				return nil, err
+			}
+			datFiles = append(datFiles, f)
+		}
+	}
+	return datFiles, nil
+}
+
+func parseFileIDFromName(fileName string) (int, error) {
+	splittedFileName := strings.Split(fileName, "-")
+	if len(splittedFileName) != 2 {
+		return -1, fmt.Errorf("invalid file name format")
+	}
+	segmentSplit := strings.Split(splittedFileName[1], ".")
+	if len(segmentSplit) != 2 {
+		return -1, fmt.Errorf("invalid file name format")
+	}
+	segmentNum, err := strconv.Atoi(segmentSplit[0])
+	if err != nil {
+		return -1, err
+	}
+	return segmentNum, nil
+}
+
+func (s *Storage) scanFile(file *os.File, fn func(offset int64, key []byte, header Header, fileID int) error) error {
+	reader := bufio.NewReader(file)
+	offset := int64(0)
+	fileID, err := parseFileIDFromName(file.Name())
+	if err != nil {
+		return err
+	}
 	for {
-		if _, err := s.activeFile.Seek(offset, io.SeekStart); err != nil {
+		if _, err := file.Seek(offset, io.SeekStart); err != nil {
 			return err
 		}
-		reader.Reset(s.activeFile)
+		reader.Reset(file)
 
 		headerBytes := make([]byte, HeaderSize)
 		if _, err := io.ReadFull(reader, headerBytes); err != nil {
@@ -180,10 +218,26 @@ func (s *Storage) Scan(fn func(offset int64, key []byte, header Header) error) e
 			return err
 		}
 
-		if err := fn(offset, key, header); err != nil {
+		if err := fn(offset, key, header, fileID); err != nil {
 			fmt.Printf("Error in scan function%s: for this key %s\n", err, string(key))
 		}
 
 		offset += int64(HeaderSize + keySize + valueSize)
 	}
+
+}
+
+func (s *Storage) Scan(fn func(offset int64, key []byte, header Header, fileID int) error) error {
+	files, err := s.getAllDatFiles()
+	if err != nil {
+		return err
+	}
+
+	for _, f := range files {
+		if err := s.scanFile(f, fn); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

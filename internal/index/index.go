@@ -6,6 +6,7 @@ type Entry struct {
 	Timestamp int64
 	KeySize   uint32
 	ValueSize uint32
+	FileID    int
 }
 
 type Index struct {

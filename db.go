@@ -42,13 +42,14 @@ func Open(path string, version string) (*LograDB, error) {
 }
 
 func (db *LograDB) loadIndex() error {
-	return db.storage.Scan(func(offset int64, key []byte, header storage.Header) error {
+	return db.storage.Scan(func(offset int64, key []byte, header storage.Header, fileID int) error {
 		db.index.Add(string(key), index.Entry{
 			Offset:    offset,
 			CRC:       header.CRC,
 			Timestamp: header.Timestamp,
 			KeySize:   header.KeySize,
 			ValueSize: header.ValueSize,
+			FileID:    fileID,
 		})
 		return nil
 	})
