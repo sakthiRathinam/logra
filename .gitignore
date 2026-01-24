@@ -4,3 +4,4 @@ logra.db
 *.idx
 .vscode/
 logra
+logra_data/

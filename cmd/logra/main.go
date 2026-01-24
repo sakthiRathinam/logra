@@ -7,17 +7,17 @@ import (
 	"sakthirathinam/logra"
 )
 
-const dbPath = "logra.db"
+const dbDirectoryPath = "logra_data"
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: logra <db_file_path> <command> [args...]")
+		fmt.Println("Usage: logra <command> [args...]")
 		os.Exit(1)
 	}
 
 	command := os.Args[1]
 
-	db, err := logra.Open(dbPath, "1.0.0")
+	db, err := logra.Open(dbDirectoryPath, "1.0.0")
 	if err != nil {
 		fmt.Println("Failed to open database:", err)
 		os.Exit(1)

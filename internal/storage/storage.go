@@ -6,36 +6,114 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 )
 
+/***
+Data Storage Layer
+key value pairs will be stored in multiple files if they exceed a certain size limit (e.g., 250mb per file).
+Data file format - logra-<file_number>.dat
+Hint file format - logra-<file_number>.hint
+***/
+
 type Storage struct {
-	file *os.File
-	path string
+	activeFile *os.File
+	dirPath    string
 }
 
-func Open(path string) (*Storage, error) {
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+func Open(dirPath string) (*Storage, error) {
+	var activeFile *os.File
+
+	activeFile, err := getActiveFile(dirPath)
 	if err != nil {
 		return nil, err
 	}
+
 	return &Storage{
-		file: file,
-		path: path,
+		activeFile: activeFile,
+		dirPath:    dirPath,
 	}, nil
 }
 
+func getActiveFile(path string) (*os.File, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		err := os.MkdirAll(path, 0755)
+		if err != nil {
+			return nil, err
+		}
+		activeFile, err := os.OpenFile(path+"/logra-0.dat", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			return nil, err
+		}
+		return activeFile, nil
+	}
+	return findActiveFileInDir(path)
+}
+
 func (s *Storage) Close() error {
-	return s.file.Close()
+	return s.activeFile.Close()
+}
+
+func findActiveFileInDir(path string) (*os.File, error) {
+	files, err := os.ReadDir(path)
+
+	if err != nil || len(files) == 0 {
+		return nil, fmt.Errorf("no data files found")
+	}
+
+	datExtFiles := []os.DirEntry{}
+	for _, file := range files {
+		if !file.IsDir() && len(file.Name()) > 4 && file.Name()[len(file.Name())-4:] == ".dat" {
+			datExtFiles = append(datExtFiles, file)
+		}
+	}
+
+	if len(datExtFiles) == 0 {
+		return nil, fmt.Errorf("no data files found")
+	}
+
+	currentMaxFileEntry := struct {
+		file       os.DirEntry
+		segmentNum int
+	}{segmentNum: -1}
+
+	for _, file := range datExtFiles {
+		name := file.Name()
+		fmt.Println("Found data file:", name)
+		splittedFileName := strings.Split(name, "-")
+		if len(splittedFileName) != 2 {
+			continue
+		}
+		segmentSplit := strings.Split(splittedFileName[1], ".")
+		if len(segmentSplit) != 2 {
+			continue
+		}
+		segmentNum, err := strconv.Atoi(segmentSplit[0])
+		if err != nil {
+			continue
+		}
+
+		if segmentNum > currentMaxFileEntry.segmentNum {
+			currentMaxFileEntry.file = file
+			currentMaxFileEntry.segmentNum = segmentNum
+		}
+	}
+
+	if currentMaxFileEntry.segmentNum == -1 {
+		return nil, fmt.Errorf("no valid data files found")
+	}
+	return os.OpenFile(path+"/"+currentMaxFileEntry.file.Name(), os.O_RDWR|os.O_APPEND, 0666)
 }
 
 func (s *Storage) Append(key, value []byte) (int64, Header, error) {
-	offset, err := s.file.Seek(0, io.SeekEnd)
+	offset, err := s.activeFile.Seek(0, io.SeekEnd)
 	if err != nil {
 		return 0, Header{}, err
 	}
 
 	data := EncodeRecord(key, value)
-	writer := bufio.NewWriter(s.file)
+	writer := bufio.NewWriter(s.activeFile)
 
 	if _, err := writer.Write(data); err != nil {
 		return 0, Header{}, err
@@ -53,11 +131,11 @@ func (s *Storage) Append(key, value []byte) (int64, Header, error) {
 }
 
 func (s *Storage) ReadAt(offset int64, header Header) (Record, error) {
-	if _, err := s.file.Seek(offset, io.SeekStart); err != nil {
+	if _, err := s.activeFile.Seek(offset, io.SeekStart); err != nil {
 		return Record{}, err
 	}
 
-	reader := bufio.NewReader(s.file)
+	reader := bufio.NewReader(s.activeFile)
 	recordSize := HeaderSize + header.KeySize + header.ValueSize
 	data := make([]byte, recordSize)
 
@@ -69,14 +147,14 @@ func (s *Storage) ReadAt(offset int64, header Header) (Record, error) {
 }
 
 func (s *Storage) Scan(fn func(offset int64, key []byte, header Header) error) error {
-	reader := bufio.NewReader(s.file)
+	reader := bufio.NewReader(s.activeFile)
 	offset := int64(0)
 
 	for {
-		if _, err := s.file.Seek(offset, io.SeekStart); err != nil {
+		if _, err := s.activeFile.Seek(offset, io.SeekStart); err != nil {
 			return err
 		}
-		reader.Reset(s.file)
+		reader.Reset(s.activeFile)
 
 		headerBytes := make([]byte, HeaderSize)
 		if _, err := io.ReadFull(reader, headerBytes); err != nil {
