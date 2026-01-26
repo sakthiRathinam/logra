@@ -11,12 +11,15 @@ import (
 	"strings"
 )
 
-/***
+/*
+**
 Data Storage Layer
 key value pairs will be stored in multiple files if they exceed a certain size limit (e.g., 250mb per file).
 Data file format - logra-<file_number>.dat
 Hint file format - logra-<file_number>.hint
-***/
+**
+*/
+const MaxDataFileSize = 1 * 1024 * 1024 // 250 MB
 
 type Storage struct {
 	activeFile *os.File
@@ -25,8 +28,9 @@ type Storage struct {
 
 func Open(dirPath string) (*Storage, error) {
 	var activeFile *os.File
+	var err error
 
-	activeFile, err := getActiveFile(dirPath)
+	activeFile, err = getActiveFile(dirPath)
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +122,26 @@ func findActiveFileInDir(path string) (*os.File, error) {
 	return os.OpenFile(path+"/"+filepath.Base(currentMaxFileEntry.file.Name()), os.O_RDWR|os.O_APPEND, 0666)
 }
 
+func (s *Storage) switchNewDatFile() error {
+	newSegmentNum := 0
+	currentFileName := filepath.Base(s.activeFile.Name())
+	segmentSplit := strings.Split(currentFileName, ".")
+	if len(segmentSplit) == 2 {
+		currentSegmentNum, err := strconv.Atoi(segmentSplit[0])
+		if err != nil {
+			return err
+		}
+		newSegmentNum = currentSegmentNum + 1
+	}
+
+	createDatFile, err := os.OpenFile(s.dirPath+"/"+strconv.Itoa(newSegmentNum)+".dat", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return err
+	}
+	s.activeFile.Close()
+	s.activeFile = createDatFile
+	return nil
+}
 func (s *Storage) Append(key, value []byte) (int64, Header, error) {
 	offset, err := s.activeFile.Seek(0, io.SeekEnd)
 	if err != nil {
@@ -139,6 +163,16 @@ func (s *Storage) Append(key, value []byte) (int64, Header, error) {
 		return 0, Header{}, err
 	}
 
+	activeFileInfo, err := s.activeFile.Stat()
+	if err != nil {
+		return 0, Header{}, err
+	}
+
+	if activeFileInfo.Size() >= MaxDataFileSize {
+		if err := s.switchNewDatFile(); err != nil {
+			return 0, Header{}, err
+		}
+	}
 	return offset, header, nil
 }
 
