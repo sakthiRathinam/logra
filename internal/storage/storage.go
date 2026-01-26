@@ -142,6 +142,12 @@ func (s *Storage) switchNewDatFile() error {
 	s.activeFile = createDatFile
 	return nil
 }
+
+func (s *Storage) MarkDeleted(key []byte) error {
+	_, _, err := s.Append(key, []byte{})
+	return err
+}
+
 func (s *Storage) Append(key, value []byte) (int64, Header, error) {
 	offset, err := s.activeFile.Seek(0, io.SeekEnd)
 	if err != nil {
@@ -248,7 +254,9 @@ func (s *Storage) scanFile(file *os.File, fn func(offset int64, key []byte, head
 
 		keySize := binary.LittleEndian.Uint32(headerBytes[4:8])
 		valueSize := binary.LittleEndian.Uint32(headerBytes[8:12])
-
+		if valueSize == 0 {
+			continue
+		}
 		key := make([]byte, keySize)
 		if _, err := io.ReadFull(reader, key); err != nil {
 			if err == io.EOF {

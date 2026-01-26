@@ -61,6 +61,19 @@ func main() {
 		}
 		fmt.Printf("Set '%s' = '%s'\n", key, value)
 
+	case "del":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: logra del <key>")
+			os.Exit(1)
+		}
+		key := os.Args[2]
+
+		if err := db.Delete(key); err != nil {
+			fmt.Println("Failed to delete key:", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Deleted key '%s'\n", key)
+
 	default:
 		fmt.Println("Unknown command. Available: version, get, set")
 		os.Exit(1)

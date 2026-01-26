@@ -33,8 +33,13 @@ func (idx *Index) Has(key string) bool {
 	return exists
 }
 
-func (idx *Index) Remove(key string) {
+func (idx *Index) Remove(key string) bool {
+	_, exists := idx.entries[key]
+	if !exists {
+		return false
+	}
 	delete(idx.entries, key)
+	return true
 }
 
 func (idx *Index) Keys() []string {
