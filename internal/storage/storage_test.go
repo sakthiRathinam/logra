@@ -28,7 +28,7 @@ func TestOpen(t *testing.T) {
 		}
 
 		// Check dat file exists
-		datFile := filepath.Join(path, "logra-0.dat")
+		datFile := filepath.Join(path, "0.dat")
 		if _, err := os.Stat(datFile); os.IsNotExist(err) {
 			t.Errorf("Open() did not create %s", datFile)
 		}
@@ -61,9 +61,9 @@ func TestOpen(t *testing.T) {
 
 		// Create directory and multiple files
 		os.MkdirAll(path, 0755)
-		os.Create(filepath.Join(path, "logra-0.dat"))
-		os.Create(filepath.Join(path, "logra-1.dat"))
-		f, _ := os.Create(filepath.Join(path, "logra-2.dat"))
+		os.Create(filepath.Join(path, "0.dat"))
+		os.Create(filepath.Join(path, "1.dat"))
+		f, _ := os.Create(filepath.Join(path, "2.dat"))
 		f.Close()
 
 		s, err := Open(path)

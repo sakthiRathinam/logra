@@ -11,7 +11,6 @@ func BenchmarkLograDB_Set(b *testing.B) {
 	b.Run("newkeys", func(b *testing.B) {
 		dir := b.TempDir()
 		path := filepath.Join(dir, "benchdb")
-
 		db, err := Open(path, "1.0.0")
 		if err != nil {
 			b.Fatalf("Open() error = %v", err)

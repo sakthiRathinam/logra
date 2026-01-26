@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -42,7 +43,7 @@ func getActiveFile(path string) (*os.File, error) {
 		if err != nil {
 			return nil, err
 		}
-		activeFile, err := os.OpenFile(path+"/logra-0.dat", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		activeFile, err := os.OpenFile(path+"/0.dat", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			return nil, err
 		}
@@ -58,19 +59,33 @@ func (s *Storage) Close() error {
 func findActiveFileInDir(path string) (*os.File, error) {
 	files, err := os.ReadDir(path)
 
-	if err != nil || len(files) == 0 {
-		return nil, fmt.Errorf("no data files found")
+	if len(files) == 0 {
+		activeFile, err := os.OpenFile(path+"/0.dat", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			return nil, err
+		}
+		return activeFile, nil
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	datExtFiles := []os.DirEntry{}
 	for _, file := range files {
-		if !file.IsDir() && len(file.Name()) > 4 && file.Name()[len(file.Name())-4:] == ".dat" {
+		baseName := filepath.Base(file.Name())
+		if !file.IsDir() && len(baseName) > 4 && baseName[len(baseName)-4:] == ".dat" {
 			datExtFiles = append(datExtFiles, file)
 		}
 	}
-
+	fmt.Println("Data files found:", len(datExtFiles))
 	if len(datExtFiles) == 0 {
-		return nil, fmt.Errorf("no data files found")
+		fmt.Println("No .dat files found, creating new data file.")
+		activeFile, err := os.OpenFile(path+"/0.dat", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			return nil, err
+		}
+		return activeFile, nil
 	}
 
 	currentMaxFileEntry := struct {
@@ -79,13 +94,10 @@ func findActiveFileInDir(path string) (*os.File, error) {
 	}{segmentNum: -1}
 
 	for _, file := range datExtFiles {
-		name := file.Name()
-		fmt.Println("Found data file:", name)
-		splittedFileName := strings.Split(name, "-")
-		if len(splittedFileName) != 2 {
-			continue
-		}
-		segmentSplit := strings.Split(splittedFileName[1], ".")
+		baseName := filepath.Base(file.Name())
+		fmt.Println("Found data file:", baseName)
+		fmt.Println("Parsing segment number from file name:", baseName)
+		segmentSplit := strings.Split(baseName, ".")
 		if len(segmentSplit) != 2 {
 			continue
 		}
@@ -103,7 +115,7 @@ func findActiveFileInDir(path string) (*os.File, error) {
 	if currentMaxFileEntry.segmentNum == -1 {
 		return nil, fmt.Errorf("no valid data files found")
 	}
-	return os.OpenFile(path+"/"+currentMaxFileEntry.file.Name(), os.O_RDWR|os.O_APPEND, 0666)
+	return os.OpenFile(path+"/"+filepath.Base(currentMaxFileEntry.file.Name()), os.O_RDWR|os.O_APPEND, 0666)
 }
 
 func (s *Storage) Append(key, value []byte) (int64, Header, error) {
@@ -154,8 +166,9 @@ func (s *Storage) getAllDatFiles() ([]*os.File, error) {
 
 	datFiles := []*os.File{}
 	for _, file := range files {
-		if !file.IsDir() && len(file.Name()) > 4 && file.Name()[len(file.Name())-4:] == ".dat" {
-			f, err := os.OpenFile(s.dirPath+"/"+file.Name(), os.O_RDWR, 0666)
+		baseName := filepath.Base(file.Name())
+		if !file.IsDir() && len(baseName) > 4 && baseName[len(baseName)-4:] == ".dat" {
+			f, err := os.OpenFile(s.dirPath+"/"+baseName, os.O_RDWR, 0666)
 			if err != nil {
 				return nil, err
 			}
@@ -166,11 +179,8 @@ func (s *Storage) getAllDatFiles() ([]*os.File, error) {
 }
 
 func parseFileIDFromName(fileName string) (int, error) {
-	splittedFileName := strings.Split(fileName, "-")
-	if len(splittedFileName) != 2 {
-		return -1, fmt.Errorf("invalid file name format")
-	}
-	segmentSplit := strings.Split(splittedFileName[1], ".")
+	baseName := filepath.Base(fileName)
+	segmentSplit := strings.Split(baseName, ".")
 	if len(segmentSplit) != 2 {
 		return -1, fmt.Errorf("invalid file name format")
 	}
@@ -184,7 +194,7 @@ func parseFileIDFromName(fileName string) (int, error) {
 func (s *Storage) scanFile(file *os.File, fn func(offset int64, key []byte, header Header, fileID int) error) error {
 	reader := bufio.NewReader(file)
 	offset := int64(0)
-	fileID, err := parseFileIDFromName(file.Name())
+	fileID, err := parseFileIDFromName(filepath.Base(file.Name()))
 	if err != nil {
 		return err
 	}

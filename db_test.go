@@ -1,6 +1,7 @@
 package logra
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -407,6 +408,41 @@ func TestLograDB_ManyRecords(t *testing.T) {
 		if !db2.Has(key) {
 			t.Errorf("Key %q not found after reopen", key)
 		}
+	}
+}
+func TestLograDB_haveDirectoryWithoutDatfiles(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "testdb")
+
+	// Create directory without any .dat files
+	if err := os.MkdirAll(path, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	// Try to open database on empty directory
+	db, err := Open(path, "1.0.0")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	// Verify database is functional
+	if err := db.Set("test-key", "test-value"); err != nil {
+		t.Errorf("Set() error = %v", err)
+	}
+
+	if !db.Has("test-key") {
+		t.Error("Key should exist after Set")
+	}
+
+	rec, err := db.Get("test-key")
+	if err != nil {
+		t.Errorf("Get() error = %v", err)
+	}
+	if rec.Value != "test-value" {
+		t.Errorf("Get().Value = %q, want %q", rec.Value, "test-value")
 	}
 }
 
