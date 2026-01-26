@@ -42,7 +42,7 @@ func Open(path string, version string) (*LograDB, error) {
 }
 
 func (db *LograDB) loadIndex() error {
-	return db.storage.Scan(func(offset int64, key []byte, header storage.Header, fileID int) error {
+	onAppend := func(offset int64, key []byte, header storage.Header, fileID int) error {
 		db.index.Add(string(key), index.Entry{
 			Offset:    offset,
 			CRC:       header.CRC,
@@ -52,9 +52,15 @@ func (db *LograDB) loadIndex() error {
 			FileID:    fileID,
 		})
 		return nil
-	})
-}
+	}
 
+	onDelete := func(key []byte, header storage.Header) {
+		db.index.Remove(string(key))
+	}
+
+	return db.storage.Scan(onAppend, onDelete)
+
+}
 func (db *LograDB) Close() error {
 	return db.storage.Close()
 }
@@ -67,6 +73,18 @@ func (db *LograDB) Has(key string) bool {
 	return db.index.Has(key)
 }
 
+func (db *LograDB) Delete(key string) error {
+	if !db.index.Has(key) {
+		return fmt.Errorf("key not found")
+	}
+	deleted := db.index.Remove(key)
+	if !deleted {
+		return fmt.Errorf("key not found")
+	}
+
+	db.storage.MarkDeleted([]byte(key))
+	return nil
+}
 func (db *LograDB) Get(key string) (Record, error) {
 	entry, exists := db.index.Lookup(key)
 	if !exists {

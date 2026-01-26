@@ -51,9 +51,15 @@ func TestE2E_BasicWorkflow(t *testing.T) {
 		}
 	}
 
+	// Phase 3: Delete some keys
+	deleteKeys := []string{"user:2", "config:ver"}
+	for _, k := range deleteKeys {
+		if err := db.Delete(k); err != nil {
+			t.Fatalf("Delete(%q) error = %v", k, err)
+		}
+	}
 	db.Close()
-
-	// Phase 3: Reopen and verify persistence
+	// Phase 3: Reopen and verify persistence and deletions
 	db2, err := logra.Open(path, "1.0.0")
 	if err != nil {
 		t.Fatalf("Second Open() error = %v", err)
@@ -61,6 +67,13 @@ func TestE2E_BasicWorkflow(t *testing.T) {
 	defer db2.Close()
 
 	for k, expectedV := range testData {
+
+		if contains(deleteKeys, k) {
+			if db2.Has(k) {
+				t.Errorf("Key %q should have been deleted", k)
+			}
+			continue
+		}
 		if !db2.Has(k) {
 			t.Errorf("Key %q not found after reopen", k)
 			continue
@@ -412,4 +425,13 @@ func TestE2E_VersionPersistence(t *testing.T) {
 	if !db2.Has("key") {
 		t.Error("Key not found after version change")
 	}
+}
+
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }

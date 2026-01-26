@@ -271,6 +271,8 @@ func TestStorage_Scan(t *testing.T) {
 		err = s.Scan(func(offset int64, key []byte, header Header, fileID int) error {
 			scannedKeys = append(scannedKeys, string(key))
 			return nil
+		}, func(key []byte, header Header) {
+			// No-op callback for this test
 		})
 
 		if err != nil {
@@ -303,6 +305,8 @@ func TestStorage_Scan(t *testing.T) {
 		err = s.Scan(func(offset int64, key []byte, header Header, fileID int) error {
 			count++
 			return nil
+		}, func(key []byte, header Header) {
+			// No-op callback for this test
 		})
 
 		if err != nil {
@@ -334,6 +338,8 @@ func TestStorage_Scan(t *testing.T) {
 		s.Scan(func(offset int64, key []byte, header Header, fileID int) error {
 			scannedOffsets = append(scannedOffsets, offset)
 			return nil
+		}, func(key []byte, header Header) {
+			// No-op callback for this test
 		})
 
 		for i, expected := range expectedOffsets {
@@ -368,6 +374,8 @@ func TestStorage_Scan(t *testing.T) {
 				return customErr
 			}
 			return nil
+		}, func(key []byte, header Header) {
+			// No-op callback for this test
 		})
 
 		// Current implementation continues despite callback errors

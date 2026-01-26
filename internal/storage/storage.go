@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -215,6 +216,14 @@ func (s *Storage) getAllDatFiles() ([]*os.File, error) {
 			datFiles = append(datFiles, f)
 		}
 	}
+	sort.Slice(datFiles, func(i, j int) bool {
+		id1, err1 := parseFileIDFromName(filepath.Base(datFiles[i].Name()))
+		id2, err2 := parseFileIDFromName(filepath.Base(datFiles[j].Name()))
+		if err1 != nil || err2 != nil {
+			return false
+		}
+		return id1 < id2
+	})
 	return datFiles, nil
 }
 
@@ -231,7 +240,7 @@ func parseFileIDFromName(fileName string) (int, error) {
 	return segmentNum, nil
 }
 
-func (s *Storage) scanFile(file *os.File, fn func(offset int64, key []byte, header Header, fileID int) error) error {
+func (s *Storage) scanFile(file *os.File, onAppend func(offset int64, key []byte, header Header, fileID int) error, onDelete func(key []byte, header Header)) error {
 	reader := bufio.NewReader(file)
 	offset := int64(0)
 	fileID, err := parseFileIDFromName(filepath.Base(file.Name()))
@@ -254,9 +263,7 @@ func (s *Storage) scanFile(file *os.File, fn func(offset int64, key []byte, head
 
 		keySize := binary.LittleEndian.Uint32(headerBytes[4:8])
 		valueSize := binary.LittleEndian.Uint32(headerBytes[8:12])
-		if valueSize == 0 {
-			continue
-		}
+
 		key := make([]byte, keySize)
 		if _, err := io.ReadFull(reader, key); err != nil {
 			if err == io.EOF {
@@ -269,8 +276,9 @@ func (s *Storage) scanFile(file *os.File, fn func(offset int64, key []byte, head
 		if err != nil {
 			return err
 		}
-
-		if err := fn(offset, key, header, fileID); err != nil {
+		if valueSize == 0 {
+			onDelete(key, header)
+		} else if err := onAppend(offset, key, header, fileID); err != nil {
 			fmt.Printf("Error in scan function%s: for this key %s\n", err, string(key))
 		}
 
@@ -279,14 +287,14 @@ func (s *Storage) scanFile(file *os.File, fn func(offset int64, key []byte, head
 
 }
 
-func (s *Storage) Scan(fn func(offset int64, key []byte, header Header, fileID int) error) error {
+func (s *Storage) Scan(onAppend func(offset int64, key []byte, header Header, fileID int) error, onDelete func(key []byte, header Header)) error {
 	files, err := s.getAllDatFiles()
 	if err != nil {
 		return err
 	}
 
 	for _, f := range files {
-		if err := s.scanFile(f, fn); err != nil {
+		if err := s.scanFile(f, onAppend, onDelete); err != nil {
 			return err
 		}
 	}

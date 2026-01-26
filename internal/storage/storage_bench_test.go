@@ -93,6 +93,8 @@ func BenchmarkStorage_Scan(b *testing.B) {
 
 				s.Scan(func(offset int64, key []byte, header Header, fileID int) error {
 					return nil
+				}, func(key []byte, header Header) {
+					// No-op callback for benchmark
 				})
 
 				b.StopTimer()
