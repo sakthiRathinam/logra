@@ -23,8 +23,8 @@ Hint file format - logra-<file_number>.hint
 const MaxDataFileSize = 1 * 1024 * 1024 // 250 MB
 
 type Storage struct {
-	activeFile *os.File
-	dirPath    string
+	ActiveFile *os.File
+	Dir        string
 }
 
 func Open(dirPath string) (*Storage, error) {
@@ -37,8 +37,8 @@ func Open(dirPath string) (*Storage, error) {
 	}
 
 	return &Storage{
-		activeFile: activeFile,
-		dirPath:    dirPath,
+		ActiveFile: activeFile,
+		Dir:        dirPath,
 	}, nil
 }
 
@@ -58,7 +58,7 @@ func getActiveFile(path string) (*os.File, error) {
 }
 
 func (s *Storage) Close() error {
-	return s.activeFile.Close()
+	return s.ActiveFile.Close()
 }
 
 func findActiveFileInDir(path string) (*os.File, error) {
@@ -123,9 +123,9 @@ func findActiveFileInDir(path string) (*os.File, error) {
 	return os.OpenFile(path+"/"+filepath.Base(currentMaxFileEntry.file.Name()), os.O_RDWR|os.O_APPEND, 0666)
 }
 
-func (s *Storage) switchNewDatFile() error {
+func (s *Storage) SwitchNewDatFile() error {
 	newSegmentNum := 0
-	currentFileName := filepath.Base(s.activeFile.Name())
+	currentFileName := filepath.Base(s.ActiveFile.Name())
 	segmentSplit := strings.Split(currentFileName, ".")
 	if len(segmentSplit) == 2 {
 		currentSegmentNum, err := strconv.Atoi(segmentSplit[0])
@@ -135,12 +135,12 @@ func (s *Storage) switchNewDatFile() error {
 		newSegmentNum = currentSegmentNum + 1
 	}
 
-	createDatFile, err := os.OpenFile(s.dirPath+"/"+strconv.Itoa(newSegmentNum)+".dat", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	createDatFile, err := os.OpenFile(s.Dir+"/"+strconv.Itoa(newSegmentNum)+".dat", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		return err
 	}
-	s.activeFile.Close()
-	s.activeFile = createDatFile
+	s.ActiveFile.Close()
+	s.ActiveFile = createDatFile
 	return nil
 }
 
@@ -150,13 +150,13 @@ func (s *Storage) MarkDeleted(key []byte) error {
 }
 
 func (s *Storage) Append(key, value []byte) (int64, Header, error) {
-	offset, err := s.activeFile.Seek(0, io.SeekEnd)
+	offset, err := s.ActiveFile.Seek(0, io.SeekEnd)
 	if err != nil {
 		return 0, Header{}, err
 	}
 
 	data := EncodeRecord(key, value)
-	writer := bufio.NewWriter(s.activeFile)
+	writer := bufio.NewWriter(s.ActiveFile)
 
 	if _, err := writer.Write(data); err != nil {
 		return 0, Header{}, err
@@ -170,13 +170,13 @@ func (s *Storage) Append(key, value []byte) (int64, Header, error) {
 		return 0, Header{}, err
 	}
 
-	activeFileInfo, err := s.activeFile.Stat()
+	activeFileInfo, err := s.ActiveFile.Stat()
 	if err != nil {
 		return 0, Header{}, err
 	}
 
 	if activeFileInfo.Size() >= MaxDataFileSize {
-		if err := s.switchNewDatFile(); err != nil {
+		if err := s.SwitchNewDatFile(); err != nil {
 			return 0, Header{}, err
 		}
 	}
@@ -184,11 +184,11 @@ func (s *Storage) Append(key, value []byte) (int64, Header, error) {
 }
 
 func (s *Storage) ReadAt(offset int64, header Header) (Record, error) {
-	if _, err := s.activeFile.Seek(offset, io.SeekStart); err != nil {
+	if _, err := s.ActiveFile.Seek(offset, io.SeekStart); err != nil {
 		return Record{}, err
 	}
 
-	reader := bufio.NewReader(s.activeFile)
+	reader := bufio.NewReader(s.ActiveFile)
 	recordSize := HeaderSize + header.KeySize + header.ValueSize
 	data := make([]byte, recordSize)
 
@@ -199,8 +199,8 @@ func (s *Storage) ReadAt(offset int64, header Header) (Record, error) {
 	return DecodeRecord(data)
 }
 
-func (s *Storage) getAllDatFiles() ([]*os.File, error) {
-	files, err := os.ReadDir(s.dirPath)
+func (s *Storage) GetAllDatFiles() ([]*os.File, error) {
+	files, err := os.ReadDir(s.Dir)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +209,7 @@ func (s *Storage) getAllDatFiles() ([]*os.File, error) {
 	for _, file := range files {
 		baseName := filepath.Base(file.Name())
 		if !file.IsDir() && len(baseName) > 4 && baseName[len(baseName)-4:] == ".dat" {
-			f, err := os.OpenFile(s.dirPath+"/"+baseName, os.O_RDWR, 0666)
+			f, err := os.OpenFile(s.Dir+"/"+baseName, os.O_RDWR, 0666)
 			if err != nil {
 				return nil, err
 			}
@@ -217,8 +217,8 @@ func (s *Storage) getAllDatFiles() ([]*os.File, error) {
 		}
 	}
 	sort.Slice(datFiles, func(i, j int) bool {
-		id1, err1 := parseFileIDFromName(filepath.Base(datFiles[i].Name()))
-		id2, err2 := parseFileIDFromName(filepath.Base(datFiles[j].Name()))
+		id1, err1 := ParseFileIDFromName(filepath.Base(datFiles[i].Name()))
+		id2, err2 := ParseFileIDFromName(filepath.Base(datFiles[j].Name()))
 		if err1 != nil || err2 != nil {
 			return false
 		}
@@ -227,7 +227,7 @@ func (s *Storage) getAllDatFiles() ([]*os.File, error) {
 	return datFiles, nil
 }
 
-func parseFileIDFromName(fileName string) (int, error) {
+func ParseFileIDFromName(fileName string) (int, error) {
 	baseName := filepath.Base(fileName)
 	segmentSplit := strings.Split(baseName, ".")
 	if len(segmentSplit) != 2 {
@@ -243,19 +243,14 @@ func parseFileIDFromName(fileName string) (int, error) {
 func (s *Storage) scanFile(file *os.File, onAppend func(offset int64, key []byte, header Header, fileID int) error, onDelete func(key []byte, header Header)) error {
 	reader := bufio.NewReader(file)
 	offset := int64(0)
-	fileID, err := parseFileIDFromName(filepath.Base(file.Name()))
+	fileID, err := ParseFileIDFromName(filepath.Base(file.Name()))
 	if err != nil {
 		return err
 	}
 	for {
-		if _, err := file.Seek(offset, io.SeekStart); err != nil {
-			return err
-		}
-		reader.Reset(file)
-
 		headerBytes := make([]byte, HeaderSize)
 		if _, err := io.ReadFull(reader, headerBytes); err != nil {
-			if err == io.EOF {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				return nil
 			}
 			return err
@@ -266,7 +261,7 @@ func (s *Storage) scanFile(file *os.File, onAppend func(offset int64, key []byte
 
 		key := make([]byte, keySize)
 		if _, err := io.ReadFull(reader, key); err != nil {
-			if err == io.EOF {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				return nil
 			}
 			return err
@@ -282,13 +277,19 @@ func (s *Storage) scanFile(file *os.File, onAppend func(offset int64, key []byte
 			fmt.Printf("Error in scan function%s: for this key %s\n", err, string(key))
 		}
 
+		if _, err := io.CopyN(io.Discard, reader, int64(valueSize)); err != nil {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				return nil
+			}
+			return err
+		}
 		offset += int64(HeaderSize + keySize + valueSize)
 	}
 
 }
 
 func (s *Storage) Scan(onAppend func(offset int64, key []byte, header Header, fileID int) error, onDelete func(key []byte, header Header)) error {
-	files, err := s.getAllDatFiles()
+	files, err := s.GetAllDatFiles()
 	if err != nil {
 		return err
 	}

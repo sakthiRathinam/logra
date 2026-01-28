@@ -456,7 +456,7 @@ func TestStorage_SwitchNewDatFile(t *testing.T) {
 			recordCount++
 
 			// Check active file name
-			activeFileName := filepath.Base(s.activeFile.Name())
+			activeFileName := filepath.Base(s.ActiveFile.Name())
 			recordsPerFile[activeFileName]++
 
 			// Track file creation order
@@ -559,7 +559,7 @@ func TestStorage_SwitchNewDatFile(t *testing.T) {
 		for i := 0; i < 30; i++ {
 			s1.Append([]byte("key"), largeValue)
 		}
-		lastActiveFile := filepath.Base(s1.activeFile.Name())
+		lastActiveFile := filepath.Base(s1.ActiveFile.Name())
 		s1.Close()
 
 		// Reopen and verify it opens the highest numbered file
@@ -569,7 +569,7 @@ func TestStorage_SwitchNewDatFile(t *testing.T) {
 		}
 		defer s2.Close()
 
-		reopenedFile := filepath.Base(s2.activeFile.Name())
+		reopenedFile := filepath.Base(s2.ActiveFile.Name())
 		if reopenedFile != lastActiveFile {
 			t.Errorf("Reopened file = %s, want %s", reopenedFile, lastActiveFile)
 		}

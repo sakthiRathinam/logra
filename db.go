@@ -8,8 +8,8 @@ import (
 )
 
 type LograDB struct {
-	index   *index.Index
-	storage *storage.Storage
+	Index   *index.Index
+	Storage *storage.Storage
 	version string
 }
 
@@ -28,8 +28,8 @@ func Open(path string, version string) (*LograDB, error) {
 	idx := index.New()
 
 	db := &LograDB{
-		index:   idx,
-		storage: store,
+		Index:   idx,
+		Storage: store,
 		version: version,
 	}
 
@@ -43,7 +43,7 @@ func Open(path string, version string) (*LograDB, error) {
 
 func (db *LograDB) loadIndex() error {
 	onAppend := func(offset int64, key []byte, header storage.Header, fileID int) error {
-		db.index.Add(string(key), index.Entry{
+		db.Index.Add(string(key), index.Entry{
 			Offset:    offset,
 			CRC:       header.CRC,
 			Timestamp: header.Timestamp,
@@ -55,14 +55,14 @@ func (db *LograDB) loadIndex() error {
 	}
 
 	onDelete := func(key []byte, header storage.Header) {
-		db.index.Remove(string(key))
+		db.Index.Remove(string(key))
 	}
 
-	return db.storage.Scan(onAppend, onDelete)
+	return db.Storage.Scan(onAppend, onDelete)
 
 }
 func (db *LograDB) Close() error {
-	return db.storage.Close()
+	return db.Storage.Close()
 }
 
 func (db *LograDB) Version() string {
@@ -70,23 +70,23 @@ func (db *LograDB) Version() string {
 }
 
 func (db *LograDB) Has(key string) bool {
-	return db.index.Has(key)
+	return db.Index.Has(key)
 }
 
 func (db *LograDB) Delete(key string) error {
-	if !db.index.Has(key) {
+	if !db.Index.Has(key) {
 		return fmt.Errorf("key not found")
 	}
-	deleted := db.index.Remove(key)
+	deleted := db.Index.Remove(key)
 	if !deleted {
 		return fmt.Errorf("key not found")
 	}
 
-	db.storage.MarkDeleted([]byte(key))
+	db.Storage.MarkDeleted([]byte(key))
 	return nil
 }
 func (db *LograDB) Get(key string) (Record, error) {
-	entry, exists := db.index.Lookup(key)
+	entry, exists := db.Index.Lookup(key)
 	if !exists {
 		return Record{}, fmt.Errorf("key not found")
 	}
@@ -98,7 +98,7 @@ func (db *LograDB) Get(key string) (Record, error) {
 		ValueSize: entry.ValueSize,
 	}
 
-	rec, err := db.storage.ReadAt(entry.Offset, header)
+	rec, err := db.Storage.ReadAt(entry.Offset, header)
 	if err != nil {
 		return Record{}, err
 	}
@@ -111,12 +111,12 @@ func (db *LograDB) Get(key string) (Record, error) {
 }
 
 func (db *LograDB) Set(key, value string) error {
-	offset, header, err := db.storage.Append([]byte(key), []byte(value))
+	offset, header, err := db.Storage.Append([]byte(key), []byte(value))
 	if err != nil {
 		return err
 	}
 
-	db.index.Add(key, index.Entry{
+	db.Index.Add(key, index.Entry{
 		Offset:    offset,
 		CRC:       header.CRC,
 		Timestamp: header.Timestamp,
