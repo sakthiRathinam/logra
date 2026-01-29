@@ -280,6 +280,46 @@ func changeActiveFile(lograDb *logra.LograDB, newFileId int) error {
 	return nil
 }
 
+// GetSortedFileObjs returns the sorted file objects prepared for compaction.
+func (m *Compact) GetSortedFileObjs() []*os.File {
+	return m.sortedFileObjs
+}
+
+// ProcessFile processes a single file during compaction.
+func (m *Compact) ProcessFile(fileObj *os.File) error {
+	return m.processFile(fileObj)
+}
+
+// CloseMergeFile closes the current merge file.
+func (m *Compact) CloseMergeFile() {
+	if m.mergeFile != nil {
+		m.mergeFile.Close()
+		m.mergeFile = nil
+	}
+}
+
+// DeleteOldFiles removes old dat files up to maxFileId.
+func (m *Compact) DeleteOldFiles() error {
+	return m.deleteOldFiles()
+}
+
+// RenameMergeFiles renames merge files to regular dat files.
+func (m *Compact) RenameMergeFiles() error {
+	return m.renameMergeFiles()
+}
+
+// ScanNewFiles scans files written after maxFileId into compactIndex.
+func (m *Compact) ScanNewFiles() error {
+	return m.scanNewFiles()
+}
+
+// SwapAndCleanup swaps the index and cleans up the state file.
+func (m *Compact) SwapAndCleanup() {
+	m.dbObj.SwapIndex(m.compactIndex)
+	m.compactStatus = CompactCompleted
+	os.Remove(filepath.Join(m.dbObj.Storage.Dir, "merge.json"))
+}
+
 // RecoverIfNeeded checks for a half-baked merge and cleans up merge files.
 func RecoverIfNeeded(dir string) error {
 	stateFile := filepath.Join(dir, "merge.json")

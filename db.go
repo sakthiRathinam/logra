@@ -104,7 +104,7 @@ func (db *LograDB) Get(key string) (Record, error) {
 		ValueSize: entry.ValueSize,
 	}
 
-	rec, err := db.Storage.ReadAt(entry.Offset, header)
+	rec, err := db.Storage.ReadAtFile(entry.Offset, header, entry.FileID)
 	if err != nil {
 		return Record{}, err
 	}
@@ -117,6 +117,7 @@ func (db *LograDB) Get(key string) (Record, error) {
 }
 
 func (db *LograDB) Set(key, value string) error {
+	fileID := db.Storage.ActiveFileID()
 	offset, header, err := db.Storage.Append([]byte(key), []byte(value))
 	if err != nil {
 		return err
@@ -128,6 +129,7 @@ func (db *LograDB) Set(key, value string) error {
 		Timestamp: header.Timestamp,
 		KeySize:   header.KeySize,
 		ValueSize: header.ValueSize,
+		FileID:    fileID,
 	})
 
 	return nil

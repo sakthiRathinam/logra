@@ -123,6 +123,14 @@ func findActiveFileInDir(path string) (*os.File, error) {
 	return os.OpenFile(path+"/"+filepath.Base(currentMaxFileEntry.file.Name()), os.O_RDWR|os.O_APPEND, 0666)
 }
 
+func (s *Storage) ActiveFileID() int {
+	id, err := ParseFileIDFromName(filepath.Base(s.ActiveFile.Name()))
+	if err != nil {
+		return 0
+	}
+	return id
+}
+
 func (s *Storage) SwitchNewDatFile() error {
 	newSegmentNum := 0
 	currentFileName := filepath.Base(s.ActiveFile.Name())
@@ -184,11 +192,28 @@ func (s *Storage) Append(key, value []byte) (int64, Header, error) {
 }
 
 func (s *Storage) ReadAt(offset int64, header Header) (Record, error) {
-	if _, err := s.ActiveFile.Seek(offset, io.SeekStart); err != nil {
+	return s.ReadAtFile(offset, header, -1)
+}
+
+func (s *Storage) ReadAtFile(offset int64, header Header, fileID int) (Record, error) {
+	var file *os.File
+	if fileID < 0 {
+		file = s.ActiveFile
+	} else {
+		path := filepath.Join(s.Dir, fmt.Sprintf("%d.dat", fileID))
+		f, err := os.Open(path)
+		if err != nil {
+			return Record{}, err
+		}
+		defer f.Close()
+		file = f
+	}
+
+	if _, err := file.Seek(offset, io.SeekStart); err != nil {
 		return Record{}, err
 	}
 
-	reader := bufio.NewReader(s.ActiveFile)
+	reader := bufio.NewReader(file)
 	recordSize := HeaderSize + header.KeySize + header.ValueSize
 	data := make([]byte, recordSize)
 
