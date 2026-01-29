@@ -240,7 +240,7 @@ func ParseFileIDFromName(fileName string) (int, error) {
 	return segmentNum, nil
 }
 
-func (s *Storage) scanFile(file *os.File, onAppend func(offset int64, key []byte, header Header, fileID int) error, onDelete func(key []byte, header Header)) error {
+func (s *Storage) ScanFile(file *os.File, skipValBytes bool, onAppend func(offset int64, key []byte, header Header, fileID int, reader io.Reader) error, onDelete func(key []byte, header Header)) error {
 	reader := bufio.NewReader(file)
 	offset := int64(0)
 	fileID, err := ParseFileIDFromName(filepath.Base(file.Name()))
@@ -271,31 +271,61 @@ func (s *Storage) scanFile(file *os.File, onAppend func(offset int64, key []byte
 		if err != nil {
 			return err
 		}
+
 		if valueSize == 0 {
 			onDelete(key, header)
-		} else if err := onAppend(offset, key, header, fileID); err != nil {
-			fmt.Printf("Error in scan function%s: for this key %s\n", err, string(key))
+		} else {
+			err := onAppend(offset, key, header, fileID, reader)
+			if err != nil {
+				fmt.Printf("Error in scan function%s: for this key %s\n", err, string(key))
+			}
 		}
 
-		if _, err := io.CopyN(io.Discard, reader, int64(valueSize)); err != nil {
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
-				return nil
+		if skipValBytes {
+			if _, err := io.CopyN(io.Discard, reader, int64(valueSize)); err != nil {
+				if err == io.EOF || err == io.ErrUnexpectedEOF {
+					return nil
+				}
+				return err
 			}
-			return err
 		}
 		offset += int64(HeaderSize + keySize + valueSize)
 	}
 
 }
 
-func (s *Storage) Scan(onAppend func(offset int64, key []byte, header Header, fileID int) error, onDelete func(key []byte, header Header)) error {
+func (s *Storage) Scan(onAppend func(offset int64, key []byte, header Header, fileID int, reader io.Reader) error, onDelete func(key []byte, header Header)) error {
 	files, err := s.GetAllDatFiles()
 	if err != nil {
 		return err
 	}
 
 	for _, f := range files {
-		if err := s.scanFile(f, onAppend, onDelete); err != nil {
+		if err := s.ScanFile(f, true, onAppend, onDelete); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Storage) ScanFilesAfter(afterFileID int, onAppend func(offset int64, key []byte, header Header, fileID int, reader io.Reader) error, onDelete func(key []byte, header Header)) error {
+	files, err := s.GetAllDatFiles()
+	if err != nil {
+		return err
+	}
+
+	for _, f := range files {
+		fileID, err := ParseFileIDFromName(filepath.Base(f.Name()))
+		if err != nil {
+			f.Close()
+			continue
+		}
+		if fileID <= afterFileID {
+			f.Close()
+			continue
+		}
+		if err := s.ScanFile(f, true, onAppend, onDelete); err != nil {
 			return err
 		}
 	}

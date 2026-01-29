@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"path/filepath"
 	"testing"
 )
@@ -91,7 +92,7 @@ func BenchmarkStorage_Scan(b *testing.B) {
 				s, _ = Open(path)
 				b.StartTimer()
 
-				s.Scan(func(offset int64, key []byte, header Header, fileID int) error {
+				s.Scan(func(offset int64, key []byte, header Header, fileID int, reader io.Reader) error {
 					return nil
 				}, func(key []byte, header Header) {
 					// No-op callback for benchmark

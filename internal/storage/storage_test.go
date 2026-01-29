@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -268,7 +269,7 @@ func TestStorage_Scan(t *testing.T) {
 		}
 
 		scannedKeys := []string{}
-		err = s.Scan(func(offset int64, key []byte, header Header, fileID int) error {
+		err = s.Scan(func(offset int64, key []byte, header Header, fileID int, reader io.Reader) error {
 			scannedKeys = append(scannedKeys, string(key))
 			return nil
 		}, func(key []byte, header Header) {
@@ -302,7 +303,7 @@ func TestStorage_Scan(t *testing.T) {
 		defer s.Close()
 
 		count := 0
-		err = s.Scan(func(offset int64, key []byte, header Header, fileID int) error {
+		err = s.Scan(func(offset int64, key []byte, header Header, fileID int, reader io.Reader) error {
 			count++
 			return nil
 		}, func(key []byte, header Header) {
@@ -335,7 +336,7 @@ func TestStorage_Scan(t *testing.T) {
 		}
 
 		scannedOffsets := []int64{}
-		s.Scan(func(offset int64, key []byte, header Header, fileID int) error {
+		s.Scan(func(offset int64, key []byte, header Header, fileID int, reader io.Reader) error {
 			scannedOffsets = append(scannedOffsets, offset)
 			return nil
 		}, func(key []byte, header Header) {
@@ -368,7 +369,7 @@ func TestStorage_Scan(t *testing.T) {
 		// This test documents that behavior
 		callCount := 0
 		customErr := errors.New("stop scanning")
-		s.Scan(func(offset int64, key []byte, header Header, fileID int) error {
+		s.Scan(func(offset int64, key []byte, header Header, fileID int, reader io.Reader) error {
 			callCount++
 			if callCount >= 2 {
 				return customErr

@@ -2,6 +2,7 @@ package logra
 
 import (
 	"fmt"
+	"io"
 
 	"sakthirathinam/logra/internal/index"
 	"sakthirathinam/logra/internal/storage"
@@ -42,7 +43,7 @@ func Open(path string, version string) (*LograDB, error) {
 }
 
 func (db *LograDB) loadIndex() error {
-	onAppend := func(offset int64, key []byte, header storage.Header, fileID int) error {
+	onAppend := func(offset int64, key []byte, header storage.Header, fileID int, reader io.Reader) error {
 		db.Index.Add(string(key), index.Entry{
 			Offset:    offset,
 			CRC:       header.CRC,
@@ -51,6 +52,7 @@ func (db *LograDB) loadIndex() error {
 			ValueSize: header.ValueSize,
 			FileID:    fileID,
 		})
+
 		return nil
 	}
 
@@ -61,6 +63,10 @@ func (db *LograDB) loadIndex() error {
 	return db.Storage.Scan(onAppend, onDelete)
 
 }
+func (db *LograDB) SwapIndex(newIndex *index.Index) {
+	db.Index = newIndex
+}
+
 func (db *LograDB) Close() error {
 	return db.Storage.Close()
 }
