@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"sakthirathinam/logra"
+	"sakthirathinam/logra/internal/compact"
 )
 
 const dbDirectoryPath = "logra_data"
@@ -73,6 +74,14 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("Deleted key '%s'\n", key)
+
+	case "compact":
+		compact := compact.NewCompact(db)
+		if err := compact.Execute(); err != nil {
+			fmt.Println("Failed to compact database:", err)
+			os.Exit(1)
+		}
+		fmt.Println("Compaction completed")
 
 	default:
 		fmt.Println("Unknown command. Available: version, get, set")

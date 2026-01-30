@@ -3,6 +3,7 @@ package compact
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -89,6 +90,15 @@ func (m *Compact) Execute() error {
 }
 
 func (m *Compact) Prepare() error {
+	// check for any ongoing compaction
+	_, err := os.Stat(filepath.Join(m.dbObj.Storage.Dir, "merge.json"))
+	if err != nil {
+		return err
+	}
+	if !os.IsNotExist(err) {
+		return errors.New("compaction in progress")
+	}
+
 	datFiles, err := m.dbObj.Storage.GetAllDatFiles()
 	if err != nil {
 		return err
