@@ -3,15 +3,22 @@ package logra
 import (
 	"fmt"
 	"io"
+	"sync"
 
 	"sakthirathinam/logra/internal/index"
 	"sakthirathinam/logra/internal/storage"
+
+	"github.com/gofrs/flock"
 )
+
+const lograLockFile = "logra.lock"
 
 type LograDB struct {
 	Index   *index.Index
 	Storage *storage.Storage
 	version string
+	Mutex   sync.RWMutex
+	Flock   *flock.Flock
 }
 
 type Record struct {
@@ -21,6 +28,16 @@ type Record struct {
 }
 
 func Open(path string, version string) (*LograDB, error) {
+	// flock := flock.New(filepath.Join(path, lograLockFile))
+
+	// locked, err := flock.TryLock()
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to acquire lock: %w", err)
+	// }
+	// if !locked {
+	// 	return nil, fmt.Errorf("failed to acquire lock")
+	// }
+
 	store, err := storage.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open storage: %w", err)
@@ -32,14 +49,30 @@ func Open(path string, version string) (*LograDB, error) {
 		Index:   idx,
 		Storage: store,
 		version: version,
+		Flock:   nil,
 	}
 
 	if err := db.loadIndex(); err != nil {
 		store.Close()
+		db.Flock.Unlock()
+		db.Flock.Close()
 		return nil, fmt.Errorf("failed to load index: %w", err)
 	}
 
 	return db, nil
+}
+
+func (db *LograDB) Close() error {
+	err := db.Storage.Close()
+	// if err != nil {
+	// 	return fmt.Errorf("failed to close storage: %w", err)
+	// // }
+	// err = db.Flock.Unlock()
+	// if err != nil {
+	// 	return fmt.Errorf("failed to release lock: %w", err)
+	// }
+	// db.Flock.Close()
+	return err
 }
 
 func (db *LograDB) loadIndex() error {
@@ -67,10 +100,6 @@ func (db *LograDB) SwapIndex(newIndex *index.Index) {
 	db.Index = newIndex
 }
 
-func (db *LograDB) Close() error {
-	return db.Storage.Close()
-}
-
 func (db *LograDB) Version() string {
 	return db.version
 }
@@ -92,6 +121,8 @@ func (db *LograDB) Delete(key string) error {
 	return nil
 }
 func (db *LograDB) Get(key string) (Record, error) {
+	db.Mutex.RLock()
+	defer db.Mutex.RUnlock()
 	entry, exists := db.Index.Lookup(key)
 	if !exists {
 		return Record{}, fmt.Errorf("key not found")
@@ -117,6 +148,8 @@ func (db *LograDB) Get(key string) (Record, error) {
 }
 
 func (db *LograDB) Set(key, value string) error {
+	db.Mutex.Lock()
+	defer db.Mutex.Unlock()
 	fileID := db.Storage.ActiveFileID()
 	offset, header, err := db.Storage.Append([]byte(key), []byte(value))
 	if err != nil {

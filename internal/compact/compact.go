@@ -89,13 +89,14 @@ func (m *Compact) Execute() error {
 	return nil
 }
 
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil || !os.IsNotExist(err)
+}
+
 func (m *Compact) Prepare() error {
 	// check for any ongoing compaction
-	_, err := os.Stat(filepath.Join(m.dbObj.Storage.Dir, "merge.json"))
-	if err != nil {
-		return err
-	}
-	if !os.IsNotExist(err) {
+	if fileExists(filepath.Join(m.dbObj.Storage.Dir, "merge.json")) {
 		return errors.New("compaction in progress")
 	}
 
@@ -281,11 +282,14 @@ func (m *Compact) writeState(status CompactStatus) error {
 }
 
 func changeActiveFile(lograDb *logra.LograDB, newFileId int) error {
+	lograDb.Mutex.Lock()
+	defer lograDb.Mutex.Unlock()
 	newDataFilePath := filepath.Join(lograDb.Storage.Dir, strconv.Itoa(newFileId)+".dat")
 	datFile, err := os.OpenFile(newDataFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
+
 	lograDb.Storage.ActiveFile = datFile
 	return nil
 }

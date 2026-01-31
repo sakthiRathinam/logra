@@ -87,4 +87,5 @@ func main() {
 		fmt.Println("Unknown command. Available: version, get, set")
 		os.Exit(1)
 	}
+	db.Close()
 }

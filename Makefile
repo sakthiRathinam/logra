@@ -1,11 +1,8 @@
-.PHONY: build run clean fmt vet test test-unit test-e2e bench coverage test-race version get set
+.PHONY: build run clean fmt vet test test-unit test-e2e bench coverage test-race version get set del compact
 
 # Binary name
 BINARY=logra
 
-# Default database and config files
-DB_FILE=logra.db
-CONFIG_FILE=config.txt
 
 # Build the binary
 build:
@@ -13,7 +10,7 @@ build:
 
 # Run without building binary
 run:
-	go run ./cmd/logra $(DB_FILE) $(CMD) $(ARGS)
+	go run ./cmd/logra $(CMD) $(ARGS)
 
 # Clean build artifacts
 clean:
@@ -56,15 +53,22 @@ test-race:
 
 # Quick commands
 version: build
-	./$(BINARY) $(DB_FILE) $(CONFIG_FILE) version
+	./$(BINARY) version
 
 get: build
 	@if [ -z "$(KEY)" ]; then echo "Usage: make get KEY=mykey"; exit 1; fi
-	./$(BINARY) $(DB_FILE) $(CONFIG_FILE) get $(KEY)
+	./$(BINARY) get $(KEY)
 
 set: build
 	@if [ -z "$(KEY)" ] || [ -z "$(VALUE)" ]; then echo "Usage: make set KEY=mykey VALUE=myvalue"; exit 1; fi
-	./$(BINARY) $(DB_FILE) $(CONFIG_FILE) set $(KEY) $(VALUE)
+	./$(BINARY) set $(KEY) $(VALUE)
+
+del: build
+	@if [ -z "$(KEY)" ]; then echo "Usage: make del KEY=mykey"; exit 1; fi
+	./$(BINARY) del $(KEY)
+
+compact: build
+	./$(BINARY) compact
 
 # Help
 help:
@@ -83,4 +87,6 @@ help:
 	@echo "  version    - Build and show version"
 	@echo "  get        - Get a key (e.g., make get KEY=mykey)"
 	@echo "  set        - Set a key-value (e.g., make set KEY=mykey VALUE=myvalue)"
+	@echo "  del        - Delete a key (e.g., make del KEY=mykey)"
+	@echo "  compact    - Run database compaction"
 	@echo "  help       - Show this help"
