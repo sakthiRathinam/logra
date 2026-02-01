@@ -105,11 +105,19 @@ func (db *LograDB) Version() string {
 }
 
 func (db *LograDB) Has(key string) bool {
+	db.Mutex.RLock()
+	defer db.Mutex.RUnlock()
+	return db.Index.Has(key)
+}
+
+func (db *LograDB) has(key string) bool {
 	return db.Index.Has(key)
 }
 
 func (db *LograDB) Delete(key string) error {
-	if !db.Index.Has(key) {
+	db.Mutex.Lock()
+	defer db.Mutex.Unlock()
+	if !db.has(key) {
 		return fmt.Errorf("key not found")
 	}
 	deleted := db.Index.Remove(key)

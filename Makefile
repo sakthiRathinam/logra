@@ -1,4 +1,4 @@
-.PHONY: build run clean fmt vet test test-unit test-e2e bench coverage test-race version get set del compact
+.PHONY: build build-server run run-server clean fmt vet test test-unit test-e2e bench coverage test-race version get set del compact
 
 # Binary name
 BINARY=logra
@@ -12,9 +12,17 @@ build:
 run:
 	go run ./cmd/logra $(CMD) $(ARGS)
 
+# Build the server binary
+build-server:
+	go build -o logra-server ./cmd/logra-server
+
+# Run server without building binary
+run-server:
+	go run ./cmd/logra-server -addr $(or $(ADDR),:6379) -db $(or $(DB),logra_data)
+
 # Clean build artifacts
 clean:
-	rm -f $(BINARY)
+	rm -f $(BINARY) logra-server
 	go clean
 
 # Format code
@@ -89,4 +97,6 @@ help:
 	@echo "  set        - Set a key-value (e.g., make set KEY=mykey VALUE=myvalue)"
 	@echo "  del        - Delete a key (e.g., make del KEY=mykey)"
 	@echo "  compact    - Run database compaction"
+	@echo "  build-server - Build the server binary"
+	@echo "  run-server - Start RESP server (e.g., make run-server ADDR=:6379 DB=logra_data)"
 	@echo "  help       - Show this help"
