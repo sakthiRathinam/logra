@@ -76,6 +76,9 @@ func HandleCommand(db *logra.LograDB, args []RESPValue, w *bufio.Writer) {
 	case "COMMAND":
 		WriteSimpleString(w, "OK")
 
+	case "CONFIG":
+		WriteSimpleString(w, "OK")
+
 	case "DBSIZE":
 		WriteInteger(w, int64(db.Index.Len()))
 

@@ -88,9 +88,44 @@ func ReadRESP(br *bufio.Reader) (RESPValue, error) {
 			}
 		}
 		return RESPValue{Type: '*', Array: arr}, nil
-	}
 
-	return RESPValue{}, fmt.Errorf("unknown RESP type: %c", typeByte)
+	default:
+		// Inline command: first byte is part of the command text
+		br.UnreadByte()
+		line, err := readLine(br)
+		if err != nil {
+			return RESPValue{}, err
+		}
+		parts := splitInline(line)
+		arr := make([]RESPValue, len(parts))
+		for i, p := range parts {
+			arr[i] = RESPValue{Type: '$', Str: p}
+		}
+		return RESPValue{Type: '*', Array: arr}, nil
+	}
+}
+
+func splitInline(line string) []string {
+	var parts []string
+	var current []byte
+	inQuote := false
+	for i := 0; i < len(line); i++ {
+		ch := line[i]
+		if ch == '"' {
+			inQuote = !inQuote
+		} else if ch == ' ' && !inQuote {
+			if len(current) > 0 {
+				parts = append(parts, string(current))
+				current = current[:0]
+			}
+		} else {
+			current = append(current, ch)
+		}
+	}
+	if len(current) > 0 {
+		parts = append(parts, string(current))
+	}
+	return parts
 }
 
 func WriteSimpleString(w *bufio.Writer, s string) {
