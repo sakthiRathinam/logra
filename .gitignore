@@ -4,4 +4,5 @@ logra.db
 *.idx
 .vscode/
 logra
+logra-server
 logra_data/
