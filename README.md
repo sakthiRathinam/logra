@@ -216,6 +216,7 @@ make clean          Remove build artifacts
 ### In Progress
 
 - [ ] **File-level locking (`flock`)** - Cross-process safety using `gofrs/flock` (scaffolded, not yet enabled)
+- [ ] **Docker support** - Dockerfile and docker-compose for single-command deployment
 
 ### Planned
 
@@ -223,13 +224,7 @@ make clean          Remove build artifacts
 - [ ] **Batch writes** - Group multiple SET operations into a single fsync for higher throughput
 - [ ] **TTL / key expiration** - Support `SET key value EX seconds` and background expiry goroutine
 - [ ] **Snapshotting** - Periodic point-in-time snapshots for backup/restore
-- [ ] **WAL (Write-Ahead Log)** - Durability guarantees before index update
-- [ ] **Connection pooling & pipelining optimization** - Batch flush RESP responses for pipelined commands
 - [ ] **MGET / MSET** - Multi-key operations in a single round-trip
-- [ ] **Pub/Sub** - Basic publish/subscribe over RESP
-- [ ] **Docker support** - Dockerfile and docker-compose for single-command deployment
-- [ ] **Prometheus metrics** - Expose ops/sec, latency histograms, connection count
-- [ ] **Replication** - Leader-follower replication for read scaling
 - [ ] **Range queries** - Ordered index (B-tree or skip list) for key range scans
 
 ### Performance Optimization Ideas
@@ -239,24 +234,3 @@ make clean          Remove build artifacts
 - [ ] **Index persistence** - Dump index to disk to avoid full scan on startup
 - [ ] **Compaction scheduling** - Automatic background compaction based on tombstone ratio
 
-## Docker (Coming Soon)
-
-```yaml
-# docker-compose.yml (planned)
-version: "3.8"
-services:
-  logra:
-    build: .
-    ports:
-      - "6379:6379"
-    volumes:
-      - logra_data:/data
-    command: ["-addr", ":6379", "-db", "/data"]
-
-volumes:
-  logra_data:
-```
-
-## License
-
-MIT
